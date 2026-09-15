@@ -72,6 +72,11 @@ pub struct ParseOptions {
     /// is a choice about the document's dialect, and the safe default is to
     /// leave the text alone.
     ///
+    /// A compact entry with nothing after its colon takes the lines indented
+    /// past its key as its value, and the lines aligned with the key as
+    /// further entries -- so `- tabs:` can hold a nested list next to
+    /// `side: right`, exactly as the expanded form does.
+    ///
     /// While this is off, a sequence item that has *both* inline text and a
     /// deeper block is an error rather than silently losing one of them.
     pub allow_key_in_line_after_list: bool,
@@ -1059,6 +1064,67 @@ impl<'a> Builder<'a> {
                     other => other,
                 };
 
+                // `- key:` with nothing after the colon, e.g.
+                //
+                //     - tabs:
+                //         - viewer
+                //       side: right
+                //
+                // Lines deeper than the key's column are the key's value;
+                // lines aligned with the key are further entries of the same
+                // compact mapping -- the nesting YAML reads, and what the
+                // expanded form (`-` alone, `tabs:` beneath it) always gave.
+                // Parsing the whole deeper block as one child instead made
+                // the nested sequence look like a non-mapping sibling
+                // (SYON-132), and silently flattened a nested mapping into
+                // the item.
+                let empty_compact_key = match &inline_val {
+                    Some(Value::Scalar(sc)) if self.opts.allow_key_in_line_after_list => {
+                        split_compact_entry(sc).filter(|(_, v)| v.is_empty()).map(|(k, _)| k)
+                    }
+                    _ => None,
+                };
+                if let Some(key) = empty_compact_key {
+                    let key_column = self.compact_key_column(header_line, indent);
+                    let mut value = Value::Scalar(String::new());
+                    if let Some(ci) = self.peek_indent() {
+                        if ci > key_column && !self.peek_is_fence() {
+                            if let Some(nested) = self.parse_block(ci)? {
+                                value = nested;
+                            }
+                        }
+                    }
+                    let mut entries = vec![MappingEntry {
+                        line: item_line,
+                        key,
+                        value,
+                        leading_comments: Vec::new(),
+                        trailing_comment: None,
+                    }];
+                    if let Some(ci) = self.peek_indent() {
+                        if ci > indent && !self.peek_is_fence() {
+                            match self.parse_block(ci)? {
+                                Some(Value::Mapping(rest)) => entries.extend(rest),
+                                Some(_) => {
+                                    return Err(SyonError::syntax(
+                                        ErrorCode::SequenceItemMixesMappingAndBlock,
+                                        "a sequence item mixes `key: value` with a \
+                                         non-mapping block",
+                                    ))
+                                }
+                                None => {}
+                            }
+                        }
+                    }
+                    items.push(SequenceItem {
+                        line: item_line,
+                        value: Value::Mapping(entries),
+                        leading_comments,
+                        trailing_comment,
+                    });
+                    continue;
+                }
+
                 let child_indent = self.peek_indent();
                 let child_value = if let Some(ci) = child_indent {
                     if ci > indent && !self.peek_is_fence() {
@@ -1879,6 +1945,86 @@ mod tests {
         assert_eq!(keys, ["md", "sh"]);
         assert_eq!(e[0].value, Value::LiteralBlock("hello\n".into()));
         assert_eq!(e[1].value, Value::Scalar("echo hi".into()));
+    }
+
+    // --- `- key:` whose value is a nested block ---
+
+    /// Entries with every source line cleared. The expanded form puts the
+    /// `-` on a line of its own, so its lines are one later; only the shape
+    /// has to agree.
+    fn shape(entries: Vec<MappingEntry>) -> Vec<MappingEntry> {
+        fn value(v: Value) -> Value {
+            match v {
+                Value::Mapping(m) => Value::Mapping(shape(m)),
+                Value::Sequence(items) => Value::Sequence(
+                    items
+                        .into_iter()
+                        .map(|i| SequenceItem { line: 0, value: value(i.value), ..i })
+                        .collect(),
+                ),
+                other => other,
+            }
+        }
+        entries
+            .into_iter()
+            .map(|e| MappingEntry { line: 0, value: value(e.value), ..e })
+            .collect()
+    }
+
+    #[test]
+    fn a_compact_entry_takes_a_nested_sequence() {
+        let src = "groups:\n  - tabs:\n      - viewer\n      - help\n";
+        let e = compact(src);
+        assert_eq!(
+            shape(e.clone()),
+            shape(expanded("groups:\n  -\n    tabs:\n      - viewer\n      - help\n"))
+        );
+        let Value::Sequence(tabs) = &e[0].value else { panic!("tabs should be a sequence: {e:?}") };
+        assert_eq!(tabs.len(), 2);
+    }
+
+    #[test]
+    fn a_nested_sequence_keeps_the_compact_entries_after_it() {
+        // `side:` aligns under `tabs`, so it is the next entry of the same
+        // compact mapping; the deeper `- params` lines are the value of `tabs`.
+        let src = "groups:\n  - tabs:\n      - params\n      - code\n    side: right\n    size: 35%\n";
+        let e = compact(src);
+        let keys: Vec<&str> = e.iter().map(|m| m.key.as_str()).collect();
+        assert_eq!(keys, ["tabs", "side", "size"]);
+        assert_eq!(
+            shape(e),
+            shape(expanded(
+                "groups:\n  -\n    tabs:\n      - params\n      - code\n    side: right\n    size: 35%\n"
+            ))
+        );
+    }
+
+    #[test]
+    fn a_compact_entry_takes_a_nested_mapping() {
+        let src = "cmds:\n  - env:\n      A: 1\n      B: 2\n    sh: echo hi\n";
+        assert_eq!(
+            shape(compact(src)),
+            shape(expanded("cmds:\n  -\n    env:\n      A: 1\n      B: 2\n    sh: echo hi\n"))
+        );
+    }
+
+    #[test]
+    fn a_nested_sequence_may_follow_other_compact_entries() {
+        let src = "groups:\n  - side: right\n    tabs:\n      - params\n";
+        assert_eq!(
+            shape(compact(src)),
+            shape(expanded("groups:\n  -\n    side: right\n    tabs:\n      - params\n"))
+        );
+    }
+
+    #[test]
+    fn an_empty_compact_entry_followed_by_siblings_stays_empty() {
+        // Nothing deeper than the key column: `task:` has no value, and the
+        // aligned `vars:` is its sibling, as before.
+        let e = compact("deps:\n  - task:\n    vars:\n      A: 1\n");
+        let keys: Vec<&str> = e.iter().map(|m| m.key.as_str()).collect();
+        assert_eq!(keys, ["task", "vars"]);
+        assert_eq!(e[0].value, Value::Scalar(String::new()));
     }
 
     #[test]
