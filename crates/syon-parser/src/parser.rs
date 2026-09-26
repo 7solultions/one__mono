@@ -457,8 +457,27 @@ fn collect_lines(
     // Source line of each entry in `lines`, so a block scalar can be taken
     // verbatim from the original text rather than from tokens.
     let mut line_nos: Vec<usize> = Vec::new();
+    // While a `|` body is open, the indent its lines must exceed. The
+    // grammar tokenises a body line like any other, but it is content: its
+    // indentation and its shape (`key: value`, `- item`, `{`) must not be
+    // checked as structure. The Builder reads the body from the source and
+    // skips these tokens, so they are kept only as `Raw` placeholders.
+    let mut body_owner: Option<usize> = None;
 
     for pair in pairs.into_iter().next().unwrap().into_inner() {
+        if pair.as_rule() != Rule::EOI {
+            if let Some(owner) = body_owner {
+                let text = pair.as_str().trim_end_matches(['\n', '\r']);
+                let indent = text.len() - text.trim_start().len();
+                if text.trim().is_empty() || indent > owner {
+                    let line = pair.line_col().0;
+                    lines.push(Line::Raw { indent, text: text.to_owned(), line });
+                    line_nos.push(line);
+                    continue;
+                }
+                body_owner = None;
+            }
+        }
         match pair.as_rule() {
             Rule::comment => {
                 let line_no = pair.line_col().0;
@@ -517,12 +536,16 @@ fn collect_lines(
                 // is a flow mapping rather than a key named `{a`.
                 check_node_start(&key).map_err(|e| at_line(e, line_no))?;
                 depth_of(indent, opts).map_err(|e| at_line(e, line_no))?;
+                if matches!(value, Some(LineValue::BlockHeader(_))) {
+                    body_owner = Some(indent);
+                }
                 lines.push(Line::KeyValue { indent, key, value, trailing });
                 line_nos.push(line_no);
             }
 
             Rule::sequence_item => {
                 let line_no = pair.line_col().0;
+                let source = pair.as_str().to_owned();
                 let mut indent = 0usize;
                 let mut value: Option<LineValue> = None;
                 let mut trailing: Option<String> = None;
@@ -550,6 +573,20 @@ fn collect_lines(
                     }
                 }
                 depth_of(indent, opts).map_err(|e| at_line(e, line_no))?;
+                body_owner = match &value {
+                    Some(LineValue::BlockHeader(_)) => Some(indent),
+                    // `- key: |`: the body belongs to the key, whose column
+                    // is past the dash and its padding. Opened whether or not
+                    // compact entries are enabled, so the Builder's error
+                    // about the option is the one reported.
+                    Some(LineValue::Scalar(sc))
+                        if split_compact_entry(sc).is_some_and(|(_, v)| block_header(&v).is_some()) =>
+                    {
+                        let after_dash = source.get(indent + 1..).unwrap_or("");
+                        Some(indent + 1 + (after_dash.len() - after_dash.trim_start().len()))
+                    }
+                    _ => None,
+                };
                 lines.push(Line::ListItem { indent, value, trailing });
                 line_nos.push(line_no);
             }
@@ -1756,6 +1793,64 @@ mod tests {
 
         // A block body is content, so it is exempt from the step.
         assert!(parse_with("a: |\n   ragged\n     body\n", ParseOptions::default()).is_ok());
+    }
+
+    /// Body lines shaped like structure are content too. Markdown produces
+    /// them: a list item's continuation line, indented three spaces, that
+    /// happens to read as `key: value` or `- item`.
+    #[test]
+    fn a_block_body_line_shaped_like_structure_is_exempt_from_the_step() {
+        let src = "content: |\n  1. **Delusion**\n     Examples: an imaginary friend\n     - or voices\n\n  Next.\nafter: x\n";
+        let file = parse(src).expect("body lines are content");
+        let Value::Mapping(entries) = &file.documents[0].body else { panic!() };
+        assert_eq!(
+            entries[0].value,
+            Value::LiteralBlock(
+                "1. **Delusion**\n   Examples: an imaginary friend\n   - or voices\n\nNext.\n".into()
+            )
+        );
+        assert_eq!(entries[1].key, "after", "the body ends at the next key");
+    }
+
+    #[test]
+    fn a_ragged_line_after_a_block_body_is_still_an_error() {
+        let err = parse("a: |\n  body\nb:\n   c: 1\n").unwrap_err().to_string();
+        assert!(err.contains("multiple of 2"), "got: {err}");
+    }
+
+    #[test]
+    fn a_sequence_items_block_body_is_exempt_too() {
+        let file = parse("- |\n  one\n     odd: indent\n").expect("body lines are content");
+        let Value::Sequence(items) = &file.documents[0].body else { panic!() };
+        assert_eq!(items[0].value, Value::LiteralBlock("one\n   odd: indent\n".into()));
+    }
+
+    #[test]
+    fn a_compact_entrys_block_body_is_exempt_and_its_sibling_still_checked() {
+        let opts = ParseOptions { allow_key_in_line_after_list: true, ..Default::default() };
+        let file = parse_with("- md: |\n    x\n       y: z\n  next: 1\n", opts).expect("body lines are content");
+        let Value::Sequence(items) = &file.documents[0].body else { panic!() };
+        let Value::Mapping(entries) = &items[0].value else { panic!() };
+        assert_eq!(entries[0].value, Value::LiteralBlock("x\n   y: z\n".into()));
+        assert_eq!(entries[1].key, "next");
+
+        // Shallower than the key's column, a line ends the body and is
+        // structure again, so its indent is checked.
+        let err = parse_with("- md: |\n    x\n next: 1\n", opts).unwrap_err().to_string();
+        assert!(err.contains("multiple of 2"), "a ragged line past the body is structure: {err}");
+    }
+
+    #[test]
+    fn a_compact_block_without_the_option_reports_the_option() {
+        let err = parse("- md: |\n    x\n       y: z\n").unwrap_err().to_string();
+        assert!(err.contains("allow_key_in_line_after_list"), "got: {err}");
+    }
+
+    #[test]
+    fn a_body_line_opening_like_a_flow_mapping_is_content() {
+        let file = parse_with("a: |\n  {not: flow}\n", ParseOptions::permissive()).expect("body is content");
+        let Value::Mapping(entries) = &file.documents[0].body else { panic!() };
+        assert_eq!(entries[0].value, Value::LiteralBlock("{not: flow}\n".into()));
     }
 
     #[test]
