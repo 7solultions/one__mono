@@ -1,0 +1,17 @@
+[package]
+name = "one-git"
+description = "Sharing a Beriah data folder with colleagues through a git repository"
+version.workspace = true
+edition = "2021"
+authors = ["Beriah Team (felix@42so.eu)"]
+license = "MultiBuild Creators License"
+repository = "https://github.com/beriah/beriah"
+
+[lib]
+path = "srcs/lib.rs"
+
+[dependencies]
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

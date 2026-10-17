@@ -1,0 +1,19 @@
+[package]
+name = "one-settings"
+description = "The user's shared settings file for the Beriah suite"
+version.workspace = true
+edition = "2021"
+authors = ["Beriah Team (felix@42so.eu)"]
+license = "MultiBuild Creators License"
+repository = "https://github.com/beriah/beriah"
+
+[lib]
+path = "srcs/lib.rs"
+
+[dependencies]
+syon-parser = { path = "../syon-parser" }
+sheni = { path = "../sheni_types" }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

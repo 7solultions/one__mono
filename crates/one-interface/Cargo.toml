@@ -1,0 +1,36 @@
+# one-interface — the shared egui frontend layer.
+#
+# Its own single-crate workspace, and deliberately *not* a member of the
+# repository-root workspace. `one-settings` is a root member and must stay free
+# of graphical-toolkit dependencies so it can be; this crate is its
+# toolkit-aware sibling, and putting eframe in the root workspace would mean
+# `cargo build` at the repository root compiles winit and glow to build the
+# SYON parser.
+[workspace]
+resolver = "2"
+
+[workspace.package]
+version = "2026.1.0"   # `{year}.{major}.{patch}`
+edition = "2021"       # rust compiler
+authors = ["Beriah Team (felix@42so.eu)"]
+license = "MultiBuild Creators License"
+repository = "https://github.com/beriah/beriah"
+
+[package]
+name = "one-interface"
+description = "Window icon and text scaling shared by every egui frontend in the Beriah suite"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "srcs/lib.rs"
+
+[dependencies]
+# The settings this crate applies to a window. The split is the point: the
+# arithmetic lives there, toolkit-free; reaching into `egui::Style` lives here.
+one-settings = { path = "../one-settings" }
+eframe = "0.29"
+egui = "0.29"

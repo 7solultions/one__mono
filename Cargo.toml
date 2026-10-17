@@ -9,6 +9,8 @@ members = [
     "crates/luach_types",
     "crates/hodesh_calendar",
     "crates/shlita_types",
+    "crates/one-settings",
+    "crates/one-git",
 ]
 
 # Inherited by every member with `version.workspace = true`, so a release is
