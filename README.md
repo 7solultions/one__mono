@@ -4,17 +4,29 @@
 
 ```
 crates/
-  syon-parser/   # pest-based parser, produces an AST
-  syon-cli/      # `syon` binary — parses a .syon file and prints the AST as JSON
-  syon-python/   # PyO3 bindings exposing syon-parser to Python
+  syon-parser/     # pest-based parser and emitter, AST in both directions
+  syon-cli/        # `syon` binary — parses a .syon file and prints the AST as JSON
+  syon-python/     # PyO3 bindings exposing syon-parser to Python
   sheni_types/     # Sheni (layer 2), the type layer over the parsed AST
   shelishi_schema/ # Shelishi (layer 3), user-declared types from a runtime schema
-  luach_types/    # calendar-agnostic day count, week, and the calendar contract
+  luach_types/     # calendar-agnostic day count, week, and the calendar contract
   hodesh_calendar/ # the calendars themselves — Gregorian, and hodesh
   shlita_types/    # IEC 61131-3 elementary types and standard functions
-syon-go/         # independent, dependency-free Go implementation
-spec/            # language specification
+syon-go/           # independent, dependency-free Go implementation
+spec/              # language specification
 ```
+
+**A crate's directory, its package, and its library all carry the same name.**
+`cargo build -p sheni_types`, `sheni_types = { path = "../sheni_types" }` and
+`use sheni_types::…` are then the same word, so there is nothing to look up.
+Two crates used to have three names between them — package `sheni` in directory
+`sheni_types` with library `sheni_types` — and every one of the three was wrong
+somewhere.
+
+The `syon-*` crates keep Cargo's own convention, where a hyphenated package has
+an underscored library: `syon-parser` builds `syon_parser`. `syon-python` is the
+one deliberate exception, whose library is `syon` because PyO3 requires the
+cdylib to be named for the module Python imports.
 
 ## Quick start
 

@@ -9,6 +9,6 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-sheni = { path = "../sheni_types" }
+sheni_types = { path = "../sheni_types" }
 serde = { version = "1", features = ["derive"] }
 time = { version = "0.3.55", default-features = false }

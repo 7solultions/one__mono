@@ -2,7 +2,12 @@
 //! and be written back unchanged, so a consumer that loads and saves a file
 //! leaves no diff.
 
-use syon_parser::{emit, parse_root, SequenceItems, Value};
+use syon_parser::{emit_with, parse_root, EmitOptions, SequenceItems, Value};
+
+/// The form existing files are written in: lists of mappings on the dash line.
+fn emit(value: &Value) -> String {
+    emit_with(value, EmitOptions { compact_sequence_mappings: true })
+}
 
 /// Roster files as the old emitter wrote them: compact lists of mappings,
 /// `|` blocks, empty values.

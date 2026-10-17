@@ -1,5 +1,5 @@
 [package]
-name = "sheni"
+name = "sheni_types"
 version.workspace = true
 edition = "2021"
 

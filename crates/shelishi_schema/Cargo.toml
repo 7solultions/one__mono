@@ -1,5 +1,5 @@
 [package]
-name = "shelishi"
+name = "shelishi_schema"
 version.workspace = true
 edition = "2021"
 
@@ -10,4 +10,4 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 syon-parser = { path = "../syon-parser" }
-sheni = { path = "../sheni_types" }
+sheni_types = { path = "../sheni_types" }

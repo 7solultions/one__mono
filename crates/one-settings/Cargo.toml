@@ -12,7 +12,7 @@ path = "srcs/lib.rs"
 
 [dependencies]
 syon-parser = { path = "../syon-parser" }
-sheni = { path = "../sheni_types" }
+sheni_types = { path = "../sheni_types" }
 thiserror = "2"
 
 [dev-dependencies]

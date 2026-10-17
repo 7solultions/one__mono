@@ -31,12 +31,12 @@ tasks:
   build-sheni:
     summary: Compile sheni_types, the type layer over the parser
     cmds:
-      - cargo build -p sheni
+      - cargo build -p sheni_types
 
   build-shelishi:
     summary: Compile shelishi_schema, the schema layer over sheni
     cmds:
-      - cargo build -p shelishi
+      - cargo build -p shelishi_schema
 
   build-luach:
     summary: Compile luach_types, what is true of every calendar
@@ -61,12 +61,12 @@ tasks:
   test-sheni:
     summary: Run unit tests for sheni_types
     cmds:
-      - cargo test -p sheni
+      - cargo test -p sheni_types
 
   test-shelishi:
     summary: Run unit tests for shelishi_schema
     cmds:
-      - cargo test -p shelishi
+      - cargo test -p shelishi_schema
 
   test-luach:
     summary: Run unit tests for luach_types
