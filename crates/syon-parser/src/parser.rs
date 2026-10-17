@@ -1309,6 +1309,20 @@ pub fn parse_document(input: &str) -> Result<crate::ast::Document, SyonError> {
     Ok(file.documents.remove(0))
 }
 
+/// Parses the dialect the suite's data files are written in and returns the
+/// main document's body.
+///
+/// Those files use the compact form for lists of mappings (`- id: p1` with the
+/// rest of the mapping indented below), which the default options reject as
+/// ambiguous with prose. Turning the option on here, in one place, keeps every
+/// reader of such a file in agreement. An input with no main document (empty,
+/// or only fenced documents) is an empty mapping.
+pub fn parse_root(input: &str) -> Result<Value, SyonError> {
+    let options = ParseOptions { allow_key_in_line_after_list: true, ..ParseOptions::default() };
+    let file = parse_with(input, options)?;
+    Ok(file.root().cloned().unwrap_or(Value::Mapping(Vec::new())))
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
