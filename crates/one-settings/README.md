@@ -122,9 +122,12 @@ hierarchy — heading, button, small, monospace — by the same factor, so headi
 stay proportionally larger rather than collapsing to one flat size. See
 `apply_font_size` in the egui frontends for how that factor is derived.
 
-The size is an integer because [`syon_parser::scalars::convert_integer`] is the
-single shared spelling of "this raw string is a number" in the repository, and
-there is no float converter to reuse. Point sizes are whole numbers in practice.
+The size is an integer because `read_integer` (in `srcs/scalar.rs`) reads it
+through Sheni's `i64`, the suite's one spelling of "this raw string is a
+number", and there is no float reader to reuse. Point sizes are whole numbers
+in practice. `-0` is rejected, and so is any boolean that is not exactly `true`
+or `false`: `syon-parser` only parses, and the meaning of a scalar is decided
+here, in the application layer.
 
 ## The other file: `info.syon`
 
