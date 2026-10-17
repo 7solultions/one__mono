@@ -1,0 +1,20 @@
+company_id: c902
+company: Demo Rail
+email_domain: demorail.example
+email_pattern: {first_name}.{family_name}@{email_domain}
+rosters:
+  reporters:
+    p1:
+      name: Greta Gruber
+      role: Fleet Engineer
+      active: true
+      reports_to: p2
+      languages:
+        de: native
+    p2:
+      name: Hans Hoffmann
+      role: Maintenance Lead
+      active: true
+      languages:
+        de: native
+        en: basic

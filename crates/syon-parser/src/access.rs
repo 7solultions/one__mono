@@ -109,7 +109,10 @@ impl<'a> Mapping<'a> {
     }
 
     pub fn get(&self, key: &str) -> Option<&'a Value> {
-        self.entries.iter().find(|entry| entry.key == key).map(|entry| &entry.value)
+        self.entries
+            .iter()
+            .find(|entry| entry.key == key)
+            .map(|entry| &entry.value)
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
@@ -122,7 +125,9 @@ impl<'a> Mapping<'a> {
 
     /// Key and value pairs in the order the mapping holds them.
     pub fn iter(&self) -> impl Iterator<Item = (&'a str, &'a Value)> {
-        self.entries.iter().map(|entry| (entry.key.as_str(), &entry.value))
+        self.entries
+            .iter()
+            .map(|entry| (entry.key.as_str(), &entry.value))
     }
 
     pub fn len(&self) -> usize {
@@ -189,7 +194,10 @@ mod tests {
         let entries = file.root().unwrap().as_mapping().unwrap();
         assert_eq!(entries.get("d").unwrap().as_scalar(), Some("a\nb"));
         // The tree keeps what the parser produced.
-        assert_eq!(entries.get("d").unwrap(), &Value::LiteralBlock("a\nb\n".into()));
+        assert_eq!(
+            entries.get("d").unwrap(),
+            &Value::LiteralBlock("a\nb\n".into())
+        );
     }
 
     #[test]
@@ -206,7 +214,9 @@ mod tests {
     #[test]
     fn set_replaces_in_place_and_appends_new_keys() {
         let mut entries: Vec<MappingEntry> = Vec::new();
-        entries.set("a", Value::scalar("1")).set("b", Value::scalar("2"));
+        entries
+            .set("a", Value::scalar("1"))
+            .set("b", Value::scalar("2"));
         entries.set("a", Value::scalar("3"));
         let view = Mapping::new(&entries);
         assert_eq!(view.keys().collect::<Vec<_>>(), vec!["a", "b"]);
@@ -254,7 +264,10 @@ mod tests {
     #[test]
     fn parse_root_reads_compact_lists_the_default_rejects() {
         let text = "people:\n  - id: p1\n    role: a\n  - id: p2\n    role: b\n";
-        assert!(parse(text).is_err(), "the default dialect rejects the compact form");
+        assert!(
+            parse(text).is_err(),
+            "the default dialect rejects the compact form"
+        );
         let root = crate::parse_root(text).unwrap();
         let people = root.as_mapping().unwrap().get("people").unwrap();
         assert_eq!(people.as_sequence().unwrap().len(), 2);

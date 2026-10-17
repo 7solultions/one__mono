@@ -286,7 +286,11 @@ mod tests {
         let text = emit(value);
         let again = parse_root(&text)
             .unwrap_or_else(|error| panic!("emitted text failed to parse: {error}\n---\n{text}"));
-        assert_eq!(view(&again), view(value), "round trip changed the tree\n---\n{text}");
+        assert_eq!(
+            view(&again),
+            view(value),
+            "round trip changed the tree\n---\n{text}"
+        );
     }
 
     fn single(key: &str, value: Value) -> Value {
@@ -300,7 +304,10 @@ mod tests {
             ("state", Value::scalar("active")),
             ("assigned_to", Value::scalar("p3")),
         ]));
-        assert_eq!(emit(&value), "id: 018f2a7e\nstate: active\nassigned_to: p3\n");
+        assert_eq!(
+            emit(&value),
+            "id: 018f2a7e\nstate: active\nassigned_to: p3\n"
+        );
     }
 
     #[test]
@@ -312,7 +319,10 @@ mod tests {
     #[test]
     fn multi_line_text_becomes_a_literal_block() {
         let value = single("description", Value::scalar("first line\nsecond line"));
-        assert_eq!(emit(&value), "description: |\n  first line\n  second line\n");
+        assert_eq!(
+            emit(&value),
+            "description: |\n  first line\n  second line\n"
+        );
         assert_round_trips(&value);
     }
 
@@ -343,9 +353,15 @@ mod tests {
     #[test]
     fn a_list_of_mappings_is_written_compactly() {
         let person = |id: &str, role: &str| {
-            Value::mapping(mapping_from([("id", Value::scalar(id)), ("role", Value::scalar(role))]))
+            Value::mapping(mapping_from([
+                ("id", Value::scalar(id)),
+                ("role", Value::scalar(role)),
+            ]))
         };
-        let value = single("people", Value::sequence([person("p1", "a"), person("p2", "b")]));
+        let value = single(
+            "people",
+            Value::sequence([person("p1", "a"), person("p2", "b")]),
+        );
         assert_eq!(
             emit(&value),
             "people:\n  - id: p1\n    role: a\n  - id: p2\n    role: b\n"
@@ -357,7 +373,10 @@ mod tests {
     fn a_compact_item_may_hold_a_nested_list() {
         let tab = Value::mapping(mapping_from([
             ("side", Value::scalar("right")),
-            ("tabs", Value::sequence([Value::scalar("one"), Value::scalar("two")])),
+            (
+                "tabs",
+                Value::sequence([Value::scalar("one"), Value::scalar("two")]),
+            ),
         ]));
         assert_round_trips(&single("panels", Value::sequence([tab])));
     }
@@ -407,7 +426,15 @@ mod tests {
         let text = emit(&single("value", Value::scalar("  padded")));
         assert_eq!(text, "value: |\n    padded\n");
         let again = parse_root(&text).unwrap();
-        assert_eq!(again.as_mapping().unwrap().get("value").unwrap().as_scalar(), Some("padded"));
+        assert_eq!(
+            again
+                .as_mapping()
+                .unwrap()
+                .get("value")
+                .unwrap()
+                .as_scalar(),
+            Some("padded")
+        );
     }
 
     #[test]

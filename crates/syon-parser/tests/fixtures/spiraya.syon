@@ -1,0 +1,56 @@
+company_id: c001
+company: spiraya
+email_domain: democompany.example
+email_pattern: {first_name}.{family_name}@{email_domain}
+rosters:
+  qa-team:
+    p1:
+      name: Alice
+      role: QA Engineer
+      email: alice@example.com
+      active: true
+      reports_to: p2
+      languages:
+        de: native
+        en: fluent
+    p2:
+      name: Bob
+      role: QA Lead
+      email: bob@example.com
+      phone: +41 44 123 45 67
+      active: true
+      languages:
+        en: native
+        fr: intermediate
+    p3:
+      name: Charlie
+      role: QA Engineer
+      active: false
+      transferred_to: p4
+      reports_to: p2
+      languages:
+        en: fluent
+    p4:
+      name: Diana
+      role: QA Engineer
+      active: true
+      reports_to: p2
+      languages:
+        de: fluent
+        en: fluent
+        it: basic
+  support-team:
+    p5:
+      name: Erin
+      role: Support Engineer
+      active: true
+      reports_to: p6
+      languages:
+        de: native
+        en: intermediate
+    p6:
+      name: Frank
+      role: Support Lead
+      active: true
+      languages:
+        en: native
