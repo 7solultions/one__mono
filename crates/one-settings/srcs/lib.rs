@@ -88,6 +88,30 @@ pub struct Settings {
     /// Where each application's data folder lives and which remote it shares
     /// through.
     pub storage: StorageSettings,
+    /// Colour preferences for command-line output, as plain words.
+    pub colors: ColorSettings,
+}
+
+/// The `colors:` section: how command-line tools colour their output.
+///
+/// This is plain data on purpose. The crate does not know what a role or a style
+/// is (`shesh-shell` does, and this crate must not depend on it): it hands up the
+/// words as written, and the tool that owns the vocabulary checks them and names
+/// the key it does not accept. Nothing is validated here except the shape.
+///
+/// ```yaml
+/// colors:
+///   enabled: auto        # the tool decides what it accepts
+///   highlight: bright-cyan
+///   error: bold red
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ColorSettings {
+    /// The value of the `enabled` key, trimmed, or `None` when the key is absent.
+    pub enabled: Option<String>,
+    /// Every other key as `(role name, style words)`, in file order, values trimmed.
+    /// A blank value stays blank: it is the tool's to refuse.
+    pub roles: Vec<(String, String)>,
 }
 
 /// The `storage:` section: where the suite's data folders live.
@@ -433,11 +457,54 @@ pub fn parse_settings(text: &str) -> Result<Settings, SettingsError> {
         }
     };
 
+    let colors = match root.get("colors") {
+        None => ColorSettings::default(),
+        Some(value) => read_colors(value)?,
+    };
+
     Ok(Settings {
         interface,
         features,
         storage,
+        colors,
     })
+}
+
+/// Reads the `colors:` section into plain `(role, style words)` pairs.
+///
+/// `colors:` with nothing under it is the same as no section. A value that is
+/// not a scalar is an error naming its key (`colors.error`): a style is a few
+/// words, and a nested mapping means the writer expected something else.
+fn read_colors(value: &syon_parser::Value) -> Result<ColorSettings, SettingsError> {
+    let mapping = match value.as_mapping() {
+        Some(mapping) => mapping,
+        None if value.as_scalar().is_some_and(|text| text.trim().is_empty()) => {
+            return Ok(ColorSettings::default());
+        }
+        None => {
+            return Err(SettingsError::WrongKind {
+                key: "colors".to_string(),
+                expected: "mapping",
+                found: value.kind_name(),
+            });
+        }
+    };
+
+    let mut colors = ColorSettings::default();
+    for (key, value) in mapping.iter() {
+        let raw = value.as_scalar().ok_or_else(|| SettingsError::WrongKind {
+            key: format!("colors.{key}"),
+            expected: "scalar",
+            found: value.kind_name(),
+        })?;
+        let words = raw.trim().to_string();
+        if key == "enabled" {
+            colors.enabled = Some(words);
+        } else {
+            colors.roles.push((key.to_string(), words));
+        }
+    }
+    Ok(colors)
 }
 
 /// Reads the `storage:` mapping, leaving absent folders unconfigured.
@@ -926,6 +993,89 @@ mod tests {
         assert!(
             matches!(&error, SettingsError::Malformed { path, .. } if path == &bad),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn an_absent_colors_section_configures_nothing() {
+        let settings = parse_settings("interface:\n  font_size: 20\n").expect("valid");
+        assert_eq!(settings.colors, ColorSettings::default());
+        assert_eq!(settings.colors.enabled, None);
+        assert!(settings.colors.roles.is_empty());
+        assert_eq!(
+            parse_settings("colors:\n").expect("valid").colors,
+            ColorSettings::default()
+        );
+    }
+
+    #[test]
+    fn colors_are_read_as_role_and_style_words_in_file_order() {
+        let settings = parse_settings(
+            "colors:\n  enabled: always\n  highlight: bright-cyan\n  error: bold red\n  made_up: whatever words\n",
+        )
+        .expect("valid");
+        assert_eq!(settings.colors.enabled.as_deref(), Some("always"));
+        assert_eq!(
+            settings.colors.roles,
+            vec![
+                ("highlight".to_string(), "bright-cyan".to_string()),
+                ("error".to_string(), "bold red".to_string()),
+                ("made_up".to_string(), "whatever words".to_string()),
+            ],
+            "no role or style is judged here: the tool that owns the words does that"
+        );
+    }
+
+    #[test]
+    fn a_blank_color_value_is_handed_up_blank() {
+        let settings = parse_settings("colors:\n  error:\n  enabled:\n").expect("valid");
+        assert_eq!(settings.colors.enabled.as_deref(), Some(""));
+        assert_eq!(
+            settings.colors.roles,
+            vec![("error".to_string(), String::new())]
+        );
+    }
+
+    #[test]
+    fn a_colors_section_of_the_wrong_kind_is_rejected() {
+        let error = parse_settings("colors: red\n").expect_err("`colors` must be a mapping");
+        assert!(
+            matches!(&error, SettingsError::WrongKind { key, .. } if key == "colors"),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn a_color_value_of_the_wrong_kind_is_named_in_full() {
+        let error =
+            parse_settings("colors:\n  error:\n    nested: x\n").expect_err("a style is a scalar");
+        assert!(
+            matches!(&error, SettingsError::WrongKind { key, found, .. }
+                if key == "colors.error" && *found == "mapping"),
+            "got {error}"
+        );
+    }
+
+    /// The other direction of the promise: a `colors:` block does not disturb the
+    /// sections that were there before it.
+    #[test]
+    fn the_colors_section_leaves_the_other_sections_alone() {
+        let settings = parse_settings(
+            "colors:\n  error: bold red\ninterface:\n  font_size: 20\nfeatures:\n  departures: true\n",
+        )
+        .expect("valid");
+        assert_eq!(settings.interface.font_size, 20);
+        assert!(settings.features.departures);
+    }
+
+    #[test]
+    fn load_from_reads_the_colors_of_a_real_file() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let file = directory.path().join("settings.syon");
+        std::fs::write(&file, "colors:\n  highlight: green\n").expect("write");
+        assert_eq!(
+            load_from(&file).expect("valid").colors.roles,
+            vec![("highlight".to_string(), "green".to_string())]
         );
     }
 }

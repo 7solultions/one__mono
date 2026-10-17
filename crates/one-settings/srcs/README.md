@@ -2,7 +2,7 @@
 
 | File | Contents |
 |---|---|
-| `lib.rs` | `settings.syon`: the `interface` and `features` sections, path resolution, and parsing. |
+| `lib.rs` | `settings.syon`: the `interface`, `features`, `storage` and `colors` sections, path resolution, and parsing. |
 | `info.rs` | `info.syon`: who the person at this machine is, as a company id and a participant slot — never a name. |
 
 The split is the point: preferences are shared and portable, identity is not, so

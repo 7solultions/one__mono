@@ -34,6 +34,10 @@ interface:
   font_size: 18
 features:
   departures: true
+colors:
+  enabled: auto
+  highlight: bright-cyan
+  error: bold red
 storage:
   reports:
     path: ~/beriah/reports
@@ -50,6 +54,8 @@ storage:
 |--------------------------|---------|----------|-------------------------------------------------|
 | `interface.font_size`    | integer | `18`     | Base body-text size in points (range 6 – 96).  |
 | `features.departures`    | boolean | `false`  | Offer the process for team members leaving.     |
+| `colors.enabled`         | words   | *unset*  | Whether command-line tools colour their output, as written. |
+| `colors.<role>`          | words   | *unset*  | A style for one role of a tool (`highlight: bright-cyan`), as written. |
 | `storage.reports.path`   | path    | *unset*  | Where `beriah-support` writes reports.          |
 | `storage.reports.remote` | URL     | *unset*  | The git remote that folder shares through.      |
 | `storage.teams.path`     | path    | *unset*  | Where `beriah-team` keeps rosters.              |
@@ -128,6 +134,10 @@ number", and there is no float reader to reuse. Point sizes are whole numbers
 in practice. `-0` is rejected, and so is any boolean that is not exactly `true`
 or `false`: `syon-parser` only parses, and the meaning of a scalar is decided
 here, in the application layer.
+
+### Colours are words, judged by the tool
+
+`colors:` holds `enabled` and one key per role of a command-line tool. This crate reads the section as plain words (`Settings::colors`, a `ColorSettings`): `enabled` as written, and every other key as a `(role name, style words)` pair, in file order. It knows no role and no style word and does not depend on `shesh-shell`: the tool that owns the vocabulary checks the words and names the key it does not accept. Anaf and Adamah read the section this way. An absent or empty section means no colours are set; a section that is not a mapping, or a value that is not a scalar, is an error that names the key (`colors`, `colors.error`).
 
 ## The other file: `info.syon`
 
