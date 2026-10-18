@@ -54,6 +54,7 @@ storage:
 |--------------------------|---------|----------|-------------------------------------------------|
 | `interface.font_size`    | integer | `18`     | Base body-text size in points (range 6 – 96).  |
 | `features.departures`    | boolean | `false`  | Offer the process for team members leaving.     |
+| `features.<tool>__<flag>` | boolean | the tool's | A flag a tool declares for itself (`adamah__systems`), read with `FeatureSettings::flag`. |
 | `colors.enabled`         | words   | *unset*  | Whether command-line tools colour their output, as written. |
 | `colors.<role>`          | words   | *unset*  | A style for one role of a tool (`highlight: bright-cyan`), as written. |
 | `storage.reports.path`   | path    | *unset*  | Where `beriah-support` writes reports.          |
@@ -108,9 +109,18 @@ for that data, and pushing to it is the failure the refusal exists to prevent.
 
 ### Features are off until asked for
 
-Every flag under `features:` defaults to **false**. A switch exists so a
-capability can ship without being turned on; a default of `true` would invert
+Every flag of this crate under `features:` defaults to **false**. A switch exists
+so a capability can ship without being turned on; a default of `true` would invert
 that and make the file opt *out* of something nobody asked for.
+
+**Namespaced flags are the exception.** A tool of the suite declares flags of its
+own, named `<tool>__<flag>` (`adamah__systems`), and reads one with
+`FeatureSettings::flag(name, default)`. The default is the tool's, and the tool
+writes it down in a file of its own (adamah: `catalog.syon`), not in code, so a
+namespaced flag may default to `true`. This crate keeps no list of them. Nothing
+else changes: an absent flag takes the tool's default, a flag nobody asks for is
+ignored whatever it holds, and a flag that is present but not `true` or `false` is
+an error when it is read, naming the key (`features.adamah__systems`).
 
 An unknown flag is ignored, so an older build will not refuse a file that
 mentions a switch it has never heard of. A flag that is present but is not a

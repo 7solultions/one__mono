@@ -159,10 +159,12 @@ pub struct FolderSettings {
 
 /// The `features:` section: capabilities a deployment opts into.
 ///
-/// Every flag here defaults to **off**. A feature switch exists so that a
+/// Every flag of this crate defaults to **off**. A feature switch exists so that a
 /// capability can be shipped without being turned on, and a default of `true`
 /// would defeat the purpose — the file would have to opt *out* of something the
-/// user never asked for.
+/// user never asked for. The exception is a namespaced flag (`<tool>__<flag>`), read
+/// with [`FeatureSettings::flag`]: its default is the owning tool's, written down in
+/// a file of that tool.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeatureSettings {
     /// Whether a frontend offers the process for team members leaving:
@@ -173,6 +175,48 @@ pub struct FeatureSettings {
     /// and still shows where its work went. What is switched off is the ability
     /// to *change* any of that from the window.
     pub departures: bool,
+    /// Every other key under `features:`, as written, for [`FeatureSettings::flag`].
+    others: Vec<(String, FlagValue)>,
+}
+
+/// What a flag that [`FeatureSettings`] does not know by name was written as.
+///
+/// Kept unjudged: the tool that owns the flag decides what it accepts, and a file
+/// that mentions a flag nobody asks for must still load.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FlagValue {
+    /// The text of a scalar.
+    Scalar(String),
+    /// The kind name of a mapping or a sequence, for the error.
+    NotAScalar(&'static str),
+}
+
+impl FeatureSettings {
+    /// The flag `name` under `features:`, or `default` when the file does not mention it.
+    ///
+    /// This is for flags a tool declares for itself, named `<tool>__<flag>`. The
+    /// default is the owner's, which is why it is an argument: the tool writes it
+    /// down in a file of its own, and this crate keeps no list of other tools'
+    /// flags. The rules of the fields hold here too: a flag that is present but is
+    /// not exactly `true` or `false` is an error naming `features.<name>`, because
+    /// quietly reading it as off teaches nobody anything.
+    pub fn flag(&self, name: &str, default: bool) -> Result<bool, SettingsError> {
+        if name == "departures" {
+            return Ok(self.departures);
+        }
+        let key = format!("features.{name}");
+        match self.others.iter().find(|(known, _)| known == name) {
+            None => Ok(default),
+            Some((_, FlagValue::Scalar(raw))) => {
+                read_boolean(raw).map_err(|source| SettingsError::NotABoolean { key, source })
+            }
+            Some((_, FlagValue::NotAScalar(found))) => Err(SettingsError::WrongKind {
+                key,
+                expected: "scalar",
+                found,
+            }),
+        }
+    }
 }
 
 /// The `interface:` section: preferences every frontend honours.
@@ -604,7 +648,19 @@ fn read_features(mapping: Mapping<'_>) -> Result<FeatureSettings, SettingsError>
         }
     };
 
-    Ok(FeatureSettings { departures })
+    let mut others = Vec::new();
+    for (name, value) in mapping.iter() {
+        if name == "departures" {
+            continue;
+        }
+        let kept = match value.as_scalar() {
+            Some(raw) => FlagValue::Scalar(raw.to_string()),
+            None => FlagValue::NotAScalar(value.kind_name()),
+        };
+        others.push((name.to_string(), kept));
+    }
+
+    Ok(FeatureSettings { departures, others })
 }
 
 /// Reads the `interface:` mapping, leaving absent keys at their defaults.
@@ -855,6 +911,89 @@ mod tests {
             matches!(error, SettingsError::WrongKind { ref key, .. } if key == "features"),
             "got {error}"
         );
+    }
+
+    #[test]
+    fn a_flag_the_file_does_not_mention_takes_the_default_of_its_owner() {
+        let settings = parse_settings("features:\n  departures: true\n").expect("valid");
+        assert!(settings
+            .features
+            .flag("adamah__systems", true)
+            .expect("absent"));
+        assert!(!settings
+            .features
+            .flag("adamah__actions", false)
+            .expect("absent"));
+        assert!(Settings::default()
+            .features
+            .flag("adamah__systems", true)
+            .expect("absent"));
+    }
+
+    #[test]
+    fn a_flag_the_file_states_beats_the_default() {
+        let settings =
+            parse_settings("features:\n  adamah__systems: false\n  adamah__actions: true\n")
+                .expect("valid");
+        assert!(!settings
+            .features
+            .flag("adamah__systems", true)
+            .expect("stated"));
+        assert!(settings
+            .features
+            .flag("adamah__actions", false)
+            .expect("stated"));
+    }
+
+    #[test]
+    fn a_namespaced_flag_does_not_disturb_departures() {
+        let settings = parse_settings("features:\n  adamah__actions: true\n  departures: true\n")
+            .expect("valid");
+        assert!(settings.features.departures);
+        assert!(settings.features.flag("departures", false).expect("known"));
+        let off = parse_settings("features:\n  adamah__actions: true\n").expect("valid");
+        assert!(!off.features.flag("departures", true).expect("known"));
+    }
+
+    /// The file still parses: an unknown or a misspelled flag must not stop every
+    /// other tool from reading it. The complaint comes when somebody asks for it.
+    #[test]
+    fn a_flag_that_is_not_a_boolean_is_an_error_when_it_is_asked_for() {
+        let settings = parse_settings("features:\n  adamah__systems: yes\n").expect("valid");
+        let error = settings
+            .features
+            .flag("adamah__systems", true)
+            .expect_err("`yes` is not how this file spells true");
+        assert!(
+            matches!(&error, SettingsError::NotABoolean { key, .. } if key == "features.adamah__systems"),
+            "got {error}"
+        );
+        assert!(
+            settings.features.flag("adamah__actions", false).is_ok(),
+            "another flag is not affected"
+        );
+    }
+
+    #[test]
+    fn a_flag_that_is_not_a_scalar_is_named_in_full() {
+        let settings =
+            parse_settings("features:\n  adamah__systems:\n    nested: true\n").expect("valid");
+        let error = settings
+            .features
+            .flag("adamah__systems", true)
+            .expect_err("a flag is a scalar");
+        assert!(
+            matches!(&error, SettingsError::WrongKind { key, found, .. }
+                if key == "features.adamah__systems" && *found == "mapping"),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn a_flag_nobody_asks_for_is_ignored_whatever_it_holds() {
+        let settings =
+            parse_settings("features:\n  time_travel:\n    nested: true\n").expect("valid");
+        assert!(!settings.features.departures);
     }
 
     #[test]
